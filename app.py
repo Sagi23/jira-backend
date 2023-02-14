@@ -1,9 +1,9 @@
 import base64
 import requests
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, session
 from flask_cors import CORS
 import json
-
+from datetime import timedelta
 
 
 app = Flask(__name__)
@@ -13,6 +13,8 @@ ITEMS_PER_PAGE = 10
 BASE_URL = "https://jira-soft.ngsoft.com/rest/api/2"
 NO_RESULT_SEARCH = "startAt=0&maxResults=0"
 
+app.secret_key = 'hello'
+app.permanent_session_lifetime = timedelta(days=350)
 
 def get_total_issues(jql, headers, BASE_URL, NO_RESULT_SEARCH):
     response = requests.get(f'{BASE_URL}/search/?jql={jql}&{NO_RESULT_SEARCH}', headers=headers)
@@ -23,6 +25,42 @@ def get_total_issues(jql, headers, BASE_URL, NO_RESULT_SEARCH):
 def hello():
     print('///////')
     return jsonify({"messeage": "hello"})
+
+
+
+@app.route('/login', methods=['POST', 'GET'])
+def login():
+    try:
+
+        data = request.get_json()
+        username = data['username']
+        password = data['password']
+        auth = base64.b64encode(f'{username}:{password}'.encode('utf-8')).decode('utf-8')
+
+        session.permanent = True
+        session['username'] = username
+        session['password'] = password
+        session['auth'] = auth
+
+        headers = {
+            'Authorization': f'Basic {auth}',
+            'Content-Type': 'application/json',
+            "Content-Encoding": "gzip",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+        }
+        response = requests.get(f'https://jira-soft.ngsoft.com/rest/api/2/project', headers=headers)
+
+        if response.status_code == 200:
+            print("auth:", auth)
+            print("session['auth']:", session['auth'])
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False})
+    except:
+        return jsonify({'success': False})
+
 
 @app.route('/jira/issue/<issue_id>', methods=['GET'])
 def jira_issue(issue_id):
@@ -37,7 +75,6 @@ def jira_issue(issue_id):
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization"
-
     }
 
     # Send the API request
@@ -46,10 +83,10 @@ def jira_issue(issue_id):
 
     # Return the response
     return make_response(jsonify(string_data), 200)
-    
 
-@app.route('/jira/search/<project_id>', methods=['POST', 'GET'])
-def jira_jql(project_id):
+
+@app.route('/jira/search/<project_id>/<severity>', methods=['POST', 'GET'])
+def jira_jql_severity(project_id, severity):
     # Base64 encode the credentials
     auth = base64.b64encode(b'sagi.twig:St123369').decode('utf-8')
     page = request.args.get('page', default=1, type=int)
@@ -76,11 +113,14 @@ def jira_jql(project_id):
     total_issues_minor = get_total_issues(f'project={project_id} AND severity="minor"', headers, BASE_URL, NO_RESULT_SEARCH)
     total_issues_cosmetic = get_total_issues(f'project={project_id} AND severity="cosmetic"', headers, BASE_URL, NO_RESULT_SEARCH)
 
-    total_issues_open = get_total_issues(f'project={project_id} AND status="open"', headers, BASE_URL, NO_RESULT_SEARCH)
-    total_issues_closed = get_total_issues(f'project={project_id} AND status="closed"', headers, BASE_URL, NO_RESULT_SEARCH)
-    total_issues_reopened = get_total_issues(f'project={project_id} AND status="reopened"', headers, BASE_URL, NO_RESULT_SEARCH)
-    total_issues_in_progress = get_total_issues(f'project={project_id} AND status="in progress"', headers, BASE_URL, NO_RESULT_SEARCH)
-    total_issues_customer_approval = get_total_issues(f'project={project_id} AND status="customer approval"', headers, BASE_URL, NO_RESULT_SEARCH)
+
+
+    total_issues_open = get_total_issues(f'project={project_id} {(f"AND severity={severity}" if severity != "All" else "")} AND status="open"', headers, BASE_URL, NO_RESULT_SEARCH)
+    total_issues_closed = get_total_issues(f'project={project_id} {(f"AND severity={severity}" if severity != "All" else "")}  AND status="closed"', headers, BASE_URL, NO_RESULT_SEARCH)
+    total_issues_reopened = get_total_issues(f'project={project_id} {(f"AND severity={severity}" if severity != "All" else "")}  AND status="reopened"', headers, BASE_URL, NO_RESULT_SEARCH)
+    total_issues_in_progress = get_total_issues(f'project={project_id} {(f"AND severity={severity}" if severity != "All" else "")}  AND status="in progress"', headers, BASE_URL, NO_RESULT_SEARCH)
+    total_issues_customer_approval = get_total_issues(f'project={project_id} {(f"AND severity={severity}" if severity != "All" else "")}  AND status="customer approval"', headers, BASE_URL, NO_RESULT_SEARCH)
+
 
     json_data = json.loads(string_data)
     project_name = 'Error No Issues Found'
@@ -107,18 +147,23 @@ def jira_jql(project_id):
 
 
     # Return the response
-    # print(json_data['issues'][0])
     return make_response(res, 200)
     
 
 @app.route('/jira/project', methods=['POST', 'GET'])
 def get_all_projects():
+    print(session.get('auth'))
     # Extract the page parameters from the query string
     page = request.args.get('page', default=1, type=int)
 
     # Base64 encode the credentials
     auth = base64.b64encode(b'sagi.twig:St123369').decode('utf-8')
 
+    # if 'auth' in session:
+    #     print('yts')
+    # else:
+    #     print('no')
+    # print(session, '4243234234234234234234')
 
     # Set the Authorization header
     headers = {
