@@ -1,7 +1,6 @@
 import base64
-from flask import Flask, make_response
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import json
 
